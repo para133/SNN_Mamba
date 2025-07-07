@@ -1,0 +1,31 @@
+model:
+  name: QKFormer
+  T: 4
+  img_size_h: 224
+  img_size_w: 224
+  patch_size: 16
+  embed_dims: 512
+  num_heads: 8
+  mlp_ratios: 4
+  in_channels: 3
+  num_classes: 100
+  qkv_bias: False
+  norm_layer_eps: 1e-6
+  depths: 10
+  sr_ratios: 1
+
+exp:
+  task_name: QKFormer_mini_imagenet
+  model: QKFormer
+  dataset: mini-imagenet
+  root_path: ./data/Mini-ImageNet-Dataset
+  img_size: 224
+  batch_size: 12
+  lr: 2e-5
+  epoch: 200
+  weight_decay: 1e-6
+  label_smoothing: 0.1
+  warmup_epochs: 10
+  use_ema: True
+  use_clip_norm: True
+  seed: 42
