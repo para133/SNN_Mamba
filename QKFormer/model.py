@@ -92,7 +92,6 @@ class Token_QK_Attention(nn.Module):
 
         return x
 
-
 class Spiking_Self_Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., sr_ratio=1):
         super().__init__()
@@ -140,12 +139,20 @@ class Spiking_Self_Attention(nn.Module):
         v_conv_out = self.v_conv(x_for_qkv)
         v_conv_out = self.v_bn(v_conv_out).reshape(T,B,C,N).contiguous()
         v_conv_out = self.v_lif(v_conv_out)
-        v = v_conv_out.transpose(-1, -2).reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
+        v = v_conv_out.transpose(-1, -2).reshape(T, B, N, self.num_heads, C // self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
+        
+        q = q.reshape(T * B, self.num_heads, N, C // self.num_heads)
+        k = k.reshape(T * B, self.num_heads, N, C // self.num_heads)
+        v = v.reshape(T * B, self.num_heads, N, C // self.num_heads)
+        attn_out = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, is_causal=False)
+        # x = k.transpose(-2,-1) @ v
+        # x = (q @ x) * self.scale
+        # 恢复原 shape
+        attn_out = attn_out.reshape(T, B, self.num_heads, N, C // self.num_heads)
+        attn_out = attn_out.permute(0, 1, 3, 2, 4).contiguous().reshape(T, B, N, C)
+        attn_out = attn_out.transpose(-1, -2).reshape(T, B, C, N).contiguous()
 
-        x = k.transpose(-2,-1) @ v
-        x = (q @ x) * self.scale
-
-        x = x.transpose(3, 4).reshape(T, B, C, N).contiguous()
+        # x = x.transpose(3, 4).reshape(T, B, C, N).contiguous()
         x = self.attn_lif(x)
         x = x.flatten(0,1)
         x = self.proj_lif(self.proj_bn(self.proj_conv(x))).reshape(T,B,C,W,H)

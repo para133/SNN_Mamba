@@ -591,15 +591,7 @@ class SelectiveScanCuda(torch.autograd.Function):
         backend = ctx.backend
         if dout.stride(-1) != 1:
             dout = dout.contiguous()
-        if backend == "oflex":
-            du, ddelta, dA, dB, dC, dD, ddelta_bias, *rest = selective_scan_cuda_oflex.bwd(
-                u, delta, A, B, C, D, delta_bias, dout, x, ctx.delta_softplus, 1
-            )
-        elif backend == "core":
-            du, ddelta, dA, dB, dC, dD, ddelta_bias, *rest = selective_scan_cuda_core.bwd(
-                u, delta, A, B, C, D, delta_bias, dout, x, ctx.delta_softplus, 1
-            )
-        elif backend == "mamba":
+        if backend == "mamba":
             du, ddelta, dA, dB, dC, dD, ddelta_bias, *rest = selective_scan_cuda.bwd(
                 u, delta, A, B, C, D, None, delta_bias, dout, x, None, None, ctx.delta_softplus,
                 False

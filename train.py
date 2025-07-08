@@ -91,7 +91,7 @@ def train(model, ema_model, train_loader, test_loader, criterion, optimizer, sch
             ema_model.restore()  # 恢复 EMA 模型状态  
    
 if __name__ == "__main__":
-    config_file = 'configs/VMamba_miniImageNet.yaml'
+    config_file = 'configs/QKFormer_miniImageNet.yaml'
     cfg = load_config(config_file) 
     assert cfg['model']['name'] == cfg['exp']['model'], \
         f"Model name in mdoel config ({cfg['model']['name']}) does not match experiment config ({cfg['exp']['model']})"
