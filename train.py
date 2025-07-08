@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
 from spikingjelly.clock_driven import functional
 from tqdm import tqdm
+import argparse
 
 from utils import load_config, get_dataset, get_model, EmaUpdater
 
@@ -90,9 +91,14 @@ def train(model, ema_model, train_loader, test_loader, criterion, optimizer, sch
             torch.save(model.state_dict(), os.path.join(py_folder, 'checkpoints', f'{log}_last.pth'))
             ema_model.restore()  # 恢复 EMA 模型状态  
    
+def parse_args():
+    parser = argparse.ArgumentParser(description='Model Train')
+    parser.add_argument('--config', type=str, default='configs/VMamba_miniImageNet.yaml', help='Path to config file')
+    return parser.parse_args()
+
 if __name__ == "__main__":
-    config_file = 'configs/QKFormer_miniImageNet.yaml'
-    cfg = load_config(config_file) 
+    args = parse_args()
+    cfg = load_config(args.config) 
     assert cfg['model']['name'] == cfg['exp']['model'], \
         f"Model name in mdoel config ({cfg['model']['name']}) does not match experiment config ({cfg['exp']['model']})"
         
@@ -112,12 +118,23 @@ if __name__ == "__main__":
         test_set, batch_size=cfg['exp']['batch_size'], shuffle=False, num_workers=4
     )
     
+    # 加载模型
     model = get_model(cfg['model']['name'], cfg=cfg['model'], class_num=class_num).to(device)
+    if cfg['exp']['pretrained']:
+        assert cfg['exp']['checkpoint'] is not None, \
+            "Pretrained model path must be specified in the experiment config."
+        checkpoint_path = cfg['exp']['checkpoint']
+        if os.path.exists(checkpoint_path):
+            print(f"Loading pretrained model from {checkpoint_path}")
+            model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+        else:
+            raise FileNotFoundError(f"Pretrained model not found at {checkpoint_path}")
+        
     # EMA 更新器
     if cfg['exp']['use_ema']:
-        ema_model = EmaUpdater(model, decay=0.9999) 
+        ema_model = EmaUpdater(model, decay=0.99) 
     else:
-        ema_model = EmaUpdater(model, decay=1)
+        ema_model = EmaUpdater(model, decay=0)
         
     criterion = nn.CrossEntropyLoss(label_smoothing=cfg['exp']['label_smoothing']).to(device)
     

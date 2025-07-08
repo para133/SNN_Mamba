@@ -29,3 +29,5 @@ exp:
   use_ema: True
   use_clip_norm: True
   seed: 42
+  pretrained: False
+  checkpoint: ./checkpoints/20250707-201539_QKFormer_mini_imagenet_QKFormer_mini-imagenet_best.pth
