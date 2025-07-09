@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 class LayerNorm(nn.LayerNorm):
     def __init__(self, *args, channel_first=None, in_channel_first=False, out_channel_first=False, **kwargs):
         nn.LayerNorm.__init__(self, *args, **kwargs)
@@ -18,7 +17,7 @@ class LayerNorm(nn.LayerNorm):
         if self.out_channel_first:
             x = x.permute(0, 3, 1, 2)
         return x
-
+    
 class PatchMerge(nn.Module):
     def __init__(self, channel_first=True, in_channel_first=False, out_channel_first=False,):
         nn.Module.__init__(self)

@@ -7,13 +7,14 @@ from collections import OrderedDict
 from torch.nn.init import trunc_normal_
 from torch.nn import functional as F
 
-from VMamba.SS2D import SS2D
-from VMamba.utils import LayerNorm, PatchMerge, Permute, Linear
-from VMamba.VSSBlock import VSSBlock
-
-class VSSM(nn.Module):
+from SVMamba.SS2D import SS2D
+from SVMamba.utils import LayerNorm, PatchMerge, Permute, Linear
+from SVMamba.VSSBlock import VSSBlock
+from SVMamba.utils import ConvLif
+class SVSSM(nn.Module):
     def __init__(
         self, 
+        T = 4,
         patch_size=4, 
         in_chans=3, 
         num_classes=1000, 
@@ -38,9 +39,6 @@ class VSSM(nn.Module):
         drop_path_rate=0.1, 
         patch_norm=True, 
         norm_layer="LN", # "BN", "LN2D"
-        downsample_version: str = "v2", # "v1", "v2", "v3"
-        patchembed_version: str = "v1", # "v1", "v2"
-        use_checkpoint=False,  
         # =========================
         posembed=False,
         imgsize=224,
@@ -49,6 +47,7 @@ class VSSM(nn.Module):
         **kwargs,
     ):
         super().__init__()
+        self.T = T
         self.channel_first = (norm_layer.lower() in ["bn", "ln2d"])
         self.num_classes = num_classes
         self.num_layers = len(depths)
@@ -69,25 +68,22 @@ class VSSM(nn.Module):
         ssm_act_layer: nn.Module = _ACTLAYERS.get(ssm_act_layer.lower(), None) # silu
         mlp_act_layer: nn.Module = _ACTLAYERS.get(mlp_act_layer.lower(), None) # gelu
 
-        # 论文中说的不像ViT中使用位置编码，而是使用双向搜索
-        self.pos_embed = self._pos_embed(dims[0], patch_size, imgsize) if posembed else None
         # 对每个 patch 使用卷积进行嵌入
-        self.patch_embed = self._make_patch_embed(in_chans, dims[0], patch_size, patch_norm, channel_first=self.channel_first, version=patchembed_version)
+        self.patch_embed = PatchEmbed(in_chans, dims[0]//self.T, patch_size, patch_norm)
 
         self.layers = nn.ModuleList()
         # 层与层之间下采样， 最后一层采用恒等映射
         for i_layer in range(self.num_layers):
-            downsample = self._make_downsample(
-                self.dims[i_layer], 
-                self.dims[i_layer + 1], 
-                channel_first=self.channel_first,
-                version=downsample_version,
+            downsample = DownSampleBlock(
+                self.dims[i_layer] // self.T, 
+                self.dims[i_layer + 1] // self.T, 
+                norm=True,
             ) if (i_layer < self.num_layers - 1) else nn.Identity()
 
-            self.layers.append(self._make_layer(
+            self.layers.append(VSSLayer(
+                T=self.T,
                 dim = self.dims[i_layer],
                 drop_path = dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
-                use_checkpoint=use_checkpoint,
                 downsample=downsample,
                 channel_first=self.channel_first,
                 # =================
@@ -110,21 +106,12 @@ class VSSM(nn.Module):
             ))
                     
         self.classifier = nn.Sequential(OrderedDict(
-            norm=LayerNorm(self.num_features, channel_first=self.channel_first), # B,H,W,C
             permute=(Permute(0, 3, 1, 2) if not self.channel_first else nn.Identity()),
             avgpool=nn.AdaptiveAvgPool2d(1),
             flatten=nn.Flatten(1),
             head=nn.Linear(self.num_features, num_classes),
         ))
-
         self.apply(self._init_weights)
-
-    @staticmethod
-    def _pos_embed(embed_dims, patch_size, img_size):
-        patch_height, patch_width = (img_size // patch_size, img_size // patch_size)
-        pos_embed = nn.Parameter(torch.zeros(1, embed_dims, patch_height, patch_width))
-        trunc_normal_(pos_embed, std=0.02)
-        return pos_embed
 
     def _init_weights(self, m: nn.Module):
         if isinstance(m, nn.Linear):
@@ -135,77 +122,20 @@ class VSSM(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    # used in building optimizer
-    @torch.jit.ignore
-    def no_weight_decay(self):
-        return {"pos_embed"}
+    def forward(self, x: torch.Tensor):
+        x = (x.unsqueeze(0)).repeat(self.T, 1, 1, 1, 1)
+        x = self.patch_embed(x)
+        for layer in self.layers:
+            x = layer(x)
+        T, B, C, H, W = x.shape
+        x = x.permute(1, 0, 2, 3, 4).contiguous()  # (B, T, C, H, W) 
+        x = x.view(B, T*C,  H, W)  
+        x = self.classifier(x)
+        return x
 
-    # used in building optimizer
-    @torch.jit.ignore
-    def no_weight_decay_keywords(self):
-        return {}
-
-
-    @staticmethod
-    def _make_patch_embed(in_chans=3, embed_dim=96, patch_size=4, patch_norm=True, channel_first=False, version="v1"):
-        # if channel first, then Norm and Output are both channel_first
-        if version == "v1": # simple patch_embed, same with swin transformer
-            return nn.Sequential(
-                nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, bias=True),
-                nn.Identity(),
-                (LayerNorm(embed_dim, in_channel_first=True, out_channel_first=channel_first) 
-                    if patch_norm else (nn.Identity() if channel_first else Permute(0, 2, 3, 1))),
-            )
-        elif version == "v2": # patch embed with stacked conv2d
-            # 直接用卷积进行嵌入，patch_size为4时，进行两次stride为2的下采样
-            stride = patch_size // 2
-            kernel_size = stride + 1
-            padding = 1
-            return nn.Sequential(
-                nn.Conv2d(in_chans, embed_dim // 2, kernel_size=kernel_size, stride=stride, padding=padding),
-                nn.Identity(),
-                (LayerNorm(embed_dim // 2, channel_first=True) if patch_norm else nn.Identity()),
-                nn.Identity(),
-                nn.GELU(),
-                nn.Conv2d(embed_dim // 2, embed_dim, kernel_size=kernel_size, stride=stride, padding=padding),
-                nn.Identity(),
-                (LayerNorm(embed_dim, in_channel_first=True, out_channel_first=channel_first) 
-                    if patch_norm else (nn.Identity() if channel_first else Permute(0, 2, 3, 1))),
-            )
-        
-        raise NotImplementedError
-
-    @staticmethod
-    def _make_downsample(dim=96, out_dim=192, norm=True, channel_first=False, version="v1"):
-        # if channel first, then Norm and Output are both channel_first
-        if version == "v1": # patch merging from swin transformer
-            # return PatchMerging2D(dim, 2 * dim, norm_layer, False)
-            return nn.Sequential(
-                PatchMerge(channel_first),
-                LayerNorm(4 * dim, channel_first=channel_first) if norm else nn.Identity(),
-                Linear(4 * dim, (2 * dim) if out_dim < 0 else out_dim, bias=False, channel_first=channel_first),
-            )
-        elif version == "v2": # combine pixelunshuffle and linear into conv2d
-            return nn.Sequential(
-                (nn.Identity() if channel_first else Permute(0, 3, 1, 2)),
-                nn.Conv2d(dim, out_dim, kernel_size=2, stride=2),
-                nn.Identity(),
-                LayerNorm(out_dim, in_channel_first=True, out_channel_first=channel_first) if norm else 
-                    (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
-            )
-        elif version == "v3": # conv2d with overlap
-            return nn.Sequential(
-                (nn.Identity() if channel_first else Permute(0, 3, 1, 2)),
-                nn.Conv2d(dim, out_dim, kernel_size=3, stride=2, padding=1),
-                nn.Identity(),
-                LayerNorm(out_dim, in_channel_first=True, out_channel_first=channel_first) if norm else 
-                    (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
-            )
-
-        raise NotImplementedError
-
-    @staticmethod
-    def _make_layer(
+class VSSLayer(nn.Module):
+    def __init__(self,
+        T=4,
         dim=96, 
         drop_path=[0.1, 0.1], 
         use_checkpoint=False, 
@@ -228,12 +158,14 @@ class VSSM(nn.Module):
         # ===========================
         **kwargs,
     ):
+        super().__init__()
         # if channel first, then Norm and Output are both channel_first
         depth = len(drop_path)
-        blocks = []
+        self.blocks = nn.ModuleList()
         for d in range(depth):
-            blocks.append(VSSBlock(
-                hidden_dim=dim, 
+            self.blocks.append(VSSBlock(
+                T=T,
+                hidden_dim=dim // 4, 
                 drop_path=drop_path[d],
                 channel_first=channel_first,
                 ssm_d_state=ssm_d_state,
@@ -250,76 +182,62 @@ class VSSM(nn.Module):
                 mlp_drop_rate=mlp_drop_rate,
                 use_checkpoint=use_checkpoint,
             ))
+        self.blocks.append(downsample)
         
-        return nn.Sequential(OrderedDict(
-            blocks=nn.Sequential(*blocks,),
-            downsample=downsample,
-        ))
-
     def forward(self, x: torch.Tensor):
-        x = self.patch_embed(x)
-        if self.pos_embed is not None:
-            pos_embed = self.pos_embed.permute(0, 2, 3, 1) if not self.channel_first else self.pos_embed
-            x = x + pos_embed
-        for layer in self.layers:
-            x = layer(x)
-        x = self.classifier(x)
+        for block in self.blocks:
+            x = block(x)
         return x
-
-    # used to load ckpt from previous training code
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
-
-        def check_name(src, state_dict: dict = state_dict, strict=False):
-            if strict:
-                if prefix + src in list(state_dict.keys()):
-                    return True
-            else:
-                key = prefix + src
-                for k in list(state_dict.keys()):
-                    if k.startswith(key):
-                        return True
-            return False
-
-        def change_name(src, dst, state_dict: dict = state_dict, strict=False):
-            if strict:
-                if prefix + src in list(state_dict.keys()):
-                    state_dict[prefix + dst] = state_dict[prefix + src]
-                    state_dict.pop(prefix + src)
-            else:
-                key = prefix + src
-                for k in list(state_dict.keys()):
-                    if k.startswith(key):
-                        new_k = prefix + dst + k[len(key):]
-                        state_dict[new_k] = state_dict[k]
-                        state_dict.pop(k)
-
-        if check_name("pos_embed", strict=True):
-            srcEmb: torch.Tensor = state_dict[prefix + "pos_embed"]
-            state_dict[prefix + "pos_embed"] = F.interpolate(srcEmb.float(), size=self.pos_embed.shape[2:4], align_corners=False, mode="bicubic").to(srcEmb.device)
-
-        change_name("patch_embed.proj", "patch_embed.0")
-        change_name("patch_embed.norm", "patch_embed.2")
-        for i in range(100):
-            for j in range(100):
-                change_name(f"layers.{i}.blocks.{j}.ln_1", f"layers.{i}.blocks.{j}.norm")
-                change_name(f"layers.{i}.blocks.{j}.self_attention", f"layers.{i}.blocks.{j}.op")
-            change_name(f"layers.{i}.downsample.norm", f"layers.{i}.downsample.{1}")
-            change_name(f"layers.{i}.downsample.reduction", f"layers.{i}.downsample.{2}")
-        change_name("norm", "classifier.norm")
-        change_name("head", "classifier.head")
-
-        return super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
-    
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
-        self_state_dict = self.state_dict()
-        load_state_dict_keys = list(state_dict.keys())
-        if prefix + "weight" in load_state_dict_keys:
-            state_dict[prefix + "weight"] = state_dict[prefix + "weight"].view_as(self_state_dict["weight"])
-        return super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
+        
+class PatchEmbed(nn.Module):
+    def __init__(self, in_chans=3, embed_dim=96, patch_size=4, patch_norm=True):
+        super().__init__()
+        stride = patch_size // 2
+        kernel_size = stride + 1
+        padding = 1
+        
+        self.convlif1 = ConvLif(T=4,
+            in_channels=in_chans,
+            out_channels=embed_dim // 2,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            norm=patch_norm,
+        )
+        
+        self.convlif2 = ConvLif(T=4,
+            in_channels=embed_dim // 2,
+            out_channels=embed_dim,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            norm=patch_norm,
+        )
+        
+    def forward(self, x: torch.Tensor):
+        x = self.convlif1(x)
+        x = self.convlif2(x)
+        return x
+        
+class DownSampleBlock(nn.Module):
+    def __init__(self, dim=96, out_dim=192, norm=True):
+        super().__init__()
+        self.convlif = ConvLif(T=4,
+            in_channels=dim,
+            out_channels=out_dim,
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            norm=norm,
+        )
+        
+    def forward(self, x: torch.Tensor):
+        x = self.convlif(x)
+        return x
 
 if __name__ == "__main__":
     # Example usage of VSSM
-    model = VSSM(
+    model = SVSSM(
         depths=[2, 2, 8, 2], dims=96, drop_path_rate=0.2, 
         patch_size=4, in_chans=3, num_classes=100, 
         ssm_d_state=1, ssm_ratio=1.0, ssm_dt_rank="auto", ssm_act_layer="silu",

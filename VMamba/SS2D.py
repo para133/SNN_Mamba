@@ -234,10 +234,12 @@ class SS2Dv2:
 
         # in proj =======================================
         d_proj = self.d_inner if self.disable_z else (self.d_inner * 2)
+        # 扩张通道，提升表示维度
         self.in_proj = Linear(self.d_model, d_proj, bias=bias, channel_first=channel_first)
         self.act: nn.Module = act_layer()
         
         # conv =======================================
+        # 局部感受野
         if self.with_dconv:
             self.conv2d = nn.Conv2d(
                 in_channels=self.d_inner,
@@ -330,12 +332,12 @@ class SS2Dv2:
             dts = dts.contiguous().view(B, -1, L) # [B, K, dt_rank, L] -> [B, K*dt_rank, L]
             dts = self.dt_projs(dts) # [B, K*dt_rank, L] -> [B, K*d_inner, L]
 
-            xs = xs.view(B, -1, L)
-            dts = dts.contiguous().view(B, -1, L)
-            As = -self.A_logs.to(torch.float).exp() # (k * c, d_state)
-            Ds = self.Ds.to(torch.float) # (K * c)
-            Bs = Bs.contiguous().view(B, K, N, L)
-            Cs = Cs.contiguous().view(B, K, N, L)
+            xs = xs.view(B, -1, L) # (B, K * d_inner, L)
+            dts = dts.contiguous().view(B, -1, L) # (B, K * d_inner, L)
+            As = -self.A_logs.to(torch.float).exp() # (k * d_inner, d_state)
+            Ds = self.Ds.to(torch.float) # (K * d_inner)
+            Bs = Bs.contiguous().view(B, K, N, L) # (B, K, d_state, L)
+            Cs = Cs.contiguous().view(B, K, N, L) # (B, K, d_state, L)
             delta_bias = self.dt_projs_bias.view(-1).to(torch.float) # 算法中关于dts的偏置 
 
             if force_fp32:

@@ -1,0 +1,45 @@
+model:
+  name: SVMamba
+  depths: [2, 4, 6, 2]
+  dims: 384 
+  drop_path_rate: 0.2 
+  patch_size: 4
+  in_chans: 3
+  num_classes: 100 
+  ssm_d_state: 1
+  ssm_ratio: 1.0
+  ssm_dt_rank: "auto"
+  ssm_act_layer: "silu"
+  ssm_conv: 3
+  ssm_conv_bias: False
+  ssm_drop_rate: 0.0 
+  ssm_init: "v0" 
+  forward_type: "v05_noz" 
+  mlp_ratio: 4.0 
+  mlp_act_layer: "gelu"
+  mlp_drop_rate: 0.0
+  gmlp: False
+  patch_norm: True
+  norm_layer: "ln2d" 
+  downsample_version: "v3"
+  use_checkpoint: False 
+  posembed: False
+  imgsize: 224
+
+exp:
+  task_name: SVMamba_mini_imagenet
+  model: SVMamba
+  dataset: mini-imagenet
+  root_path: ./data/Mini-ImageNet-Dataset
+  img_size: 224
+  batch_size: 2
+  lr: 0.001
+  epoch: 300
+  weight_decay: 0.00001
+  label_smoothing: 0.1
+  warmup_epochs: 20
+  use_ema: True
+  use_clip_norm: True
+  seed: 42
+  pretrained: False
+  checkpoint: ./checkpoints/20250707-183858_VMamba_mini_imagenet_VMamba_mini-imagenet_best.pth

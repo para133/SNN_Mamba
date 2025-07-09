@@ -28,16 +28,16 @@ class VSSBlock(nn.Module):
         mlp_act_layer=nn.GELU,
         mlp_drop_rate: float = 0.0,
         # =============================
-        use_checkpoint: bool = False,
         post_norm: bool = False,
+        use_checkpoint: bool = False,
         # =============================
         **kwargs,
     ):
         super().__init__()
         self.ssm_branch = ssm_ratio > 0
         self.mlp_branch = mlp_ratio > 0
-        self.use_checkpoint = use_checkpoint
         self.post_norm = post_norm
+        self.use_checkpoint = use_checkpoint
 
         if self.ssm_branch:
             self.norm = LayerNorm(hidden_dim, channel_first=channel_first)
@@ -52,13 +52,6 @@ class VSSBlock(nn.Module):
                 conv_bias=ssm_conv_bias,
                 # ==========================
                 dropout=ssm_drop_rate,
-                # bias=False,
-                # ==========================
-                # dt_min=0.001,
-                # dt_max=0.1,
-                # dt_init="random",
-                # dt_scale="random",
-                # dt_init_floor=1e-4,
                 initialize=ssm_init,
                 # ==========================
                 forward_type=forward_type,

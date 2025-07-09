@@ -36,7 +36,7 @@ def train(model, ema_model, train_loader, test_loader, criterion, optimizer, sch
             optimizer.step()
             ema_model.update()  # 更新 EMA 模型
             
-            if cfg['exp']['model'] == 'QKFormer':
+            if cfg['exp']['model'] == 'QKFormer' or cfg['exp']['model'] == 'SVMamba':
                 functional.reset_net(model)  # 重置模型状态，恢复神经元
 
             total_loss += loss.item() * images.size(0)
@@ -75,25 +75,28 @@ def train(model, ema_model, train_loader, test_loader, criterion, optimizer, sch
                     _, predicted = outputs.max(1)
                     total += labels.size(0)
                     correct += predicted.eq(labels).sum().item()
+                    if cfg['exp']['model'] == 'QKFormer' or cfg['exp']['model'] == 'SVMamba':
+                        functional.reset_net(model)
+                        
             test_acc = 100. * correct / total
             print(f'Test Accuracy after epoch {epoch_idx}: {test_acc:.2f}%')
             with open(log_txt, 'a') as f:
                 f.write(f'Test Accuracy after epoch {epoch_idx}: {test_acc:.2f}%\n')
             
             # 保存最佳模型
-            if accuracy > best_acc:
-                best_acc = accuracy
+            if test_acc > best_acc:
+                best_acc = test_acc
                 torch.save(model.state_dict(), os.path.join(py_folder, 'checkpoints', f'{log}_best.pth'))
-                print(f'Saved best model with accuracy: {best_acc:.2f}%')
+                print(f'Saved best model with accuracy: {test_acc:.2f}%')
                 with open(log_txt, 'a') as f:
-                    f.write(f'Saved best model with accuracy: {best_acc:.2f}%\n')
+                    f.write(f'Saved best model with accuracy: {test_acc:.2f}%\n')
             # 保存当前模型
             torch.save(model.state_dict(), os.path.join(py_folder, 'checkpoints', f'{log}_last.pth'))
             ema_model.restore()  # 恢复 EMA 模型状态  
    
 def parse_args():
     parser = argparse.ArgumentParser(description='Model Train')
-    parser.add_argument('--config', type=str, default='configs/VMamba_miniImageNet.yaml', help='Path to config file')
+    parser.add_argument('--config', type=str, default='configs/SVMamba_miniImageNet.yaml', help='Path to config file')
     return parser.parse_args()
 
 if __name__ == "__main__":
