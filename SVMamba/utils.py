@@ -128,3 +128,20 @@ class ConvLif(nn.Module):
         x = x.view(T, B, -1, H//self.stride, W//self.stride)
         x = self.lif(x)
         return x
+    
+class ConvBlock(nn.Module):
+    def __init__(self, T, in_channels, out_channels, kernel_size=3, stride=1, padding=1, norm=True):
+        super().__init__()
+        self.stride = stride
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding)
+        self.norm = LayerNorm(out_channels, channel_first=True) if norm else nn.Identity()
+        self.act = nn.GELU()
+
+    def forward(self, x: torch.Tensor):
+        T, B, C, H, W = x.shape
+        x = x.flatten(0, 1)  
+        x = self.conv(x)
+        x = self.norm(x)
+        x = self.act(x)
+        x = x.view(T, B, -1, H//self.stride, W//self.stride)
+        return x
