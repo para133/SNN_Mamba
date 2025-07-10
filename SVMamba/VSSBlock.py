@@ -38,11 +38,11 @@ class VSSBlock(nn.Module):
         self.ssm_branch = ssm_ratio > 0
         self.mlp_branch = mlp_ratio > 0
         self.use_checkpoint = use_checkpoint
-        self.post_norm = post_norm
+        # self.post_norm = post_norm
         self.T = T
         
         if self.ssm_branch:
-            self.norm1 = LayerNorm(hidden_dim, channel_first=channel_first)
+            # self.norm1 = LayerNorm(hidden_dim, channel_first=channel_first)
             self.op = SS2D(
                 T=T,
                 d_model=hidden_dim, 
@@ -71,14 +71,14 @@ class VSSBlock(nn.Module):
         # self.drop_path = DropPath(drop_path)
         
         if self.mlp_branch:
-            self.norm2 = LayerNorm(hidden_dim, channel_first=channel_first)
+            # self.norm2 = LayerNorm(hidden_dim, channel_first=channel_first)
             mlp_hidden_dim = int(hidden_dim * mlp_ratio)
             self.mlp = Mlp(T=T, in_features=hidden_dim, hidden_features=mlp_hidden_dim, act_layer=mlp_act_layer, drop=mlp_drop_rate, channel_first=channel_first)
 
     def forward(self, x: torch.Tensor):
         x = x.flatten(0,1)
         if self.ssm_branch:
-            x = x + self.op(self.norm1(x))
+            x = x + self.op(x)
         if self.mlp_branch:
-            x = x + self.mlp(self.norm2(x))
+            x = x + self.mlp(x)
         return x.view(self.T, -1, x.shape[1], x.shape[2], x.shape[3]) 

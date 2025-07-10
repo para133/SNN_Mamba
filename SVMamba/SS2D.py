@@ -214,8 +214,9 @@ class SS2Dv2:
         self.oact, forward_type = checkpostfix("_oact", forward_type)
         self.disable_z, forward_type = checkpostfix("_noz", forward_type)
         self.disable_z_act, forward_type = checkpostfix("_nozact", forward_type)
-        self.out_norm, forward_type = self.get_outnorm(forward_type, self.d_inner, channel_first)
-
+        # self.out_norm, forward_type = self.get_outnorm(forward_type, self.d_inner, channel_first)
+        self.out_norm = nn.BatchNorm2d(self.d_inner)
+        
         # forward_type debug =======================================
         # 参数绑定
         FORWARD_TYPES = dict(
@@ -331,28 +332,26 @@ class SS2Dv2:
             dts, Bs, Cs = torch.split(x_dbl.view(TB, K, -1, L), [R, N, N], dim=2)
             dts = dts.contiguous().view(TB, -1, L) # [B, K, dt_rank, L] -> [B, K*dt_rank, L]
             dts = self.dt_projs(dts) # [B, K*dt_rank, L] -> [B, K*d_inner, L]
-            dts = dts.view(self.T, B, K, D, L) # (B, K, d_inner, L)
             
-            xs = xs.view(TB, -1, L) # (B, K * d_inner, L)
-            dts = dts.contiguous().view(TB, -1, L) # (B, K * d_inner, L)
+            xs = xs.view(self.T, B, -1, L) # (B, K * d_inner, L)
+            dts = dts.view(self.T, B, -1, L) # (B, K * d_inner, L)
             As = -self.A_logs.to(torch.float).exp() # (k * d_inner, d_state)
             Ds = self.Ds.to(torch.float) # (K * d_inner)
-            Bs = Bs.contiguous().view(TB, K, N, L) # (B, K, d_state, L)
-            Cs = Cs.contiguous().view(TB, K, N, L) # (B, K, d_state, L)
+            Bs = Bs.contiguous().view(self.T, B, K, N, L) # (B, K, d_state, L)
+            Cs = Cs.contiguous().view(self.T, B, K, N, L) # (B, K, d_state, L)
             delta_bias = self.dt_projs_bias.view(-1).to(torch.float) # 算法中关于dts的偏置 
 
             if force_fp32:
                 xs, dts, Bs, Cs = to_fp32(xs, dts, Bs, Cs)
                 
-            # y_ls = []
-            # for t in range(self.T):
-            ys: torch.Tensor = selective_scan(
-                xs, dts, As, Bs, Cs, Ds, delta_bias, delta_softplus
-            ).view(TB, K, -1, H, W)
-            y: torch.Tensor = cross_merge_fn(ys, in_channel_first=True, out_channel_first=True, scans=_scan_mode, force_torch=scan_force_torch)
-            # y = y.view(B, -1, H, W)
-                # y_ls.append(y)
-            # y = torch.stack(y_ls, dim=0) # (T, B, D, H, W)
+            y_ls = []
+            for t in range(self.T):
+                ys: torch.Tensor = selective_scan(
+                    xs[t], dts[t], As, Bs[t], Cs[t], Ds, delta_bias, delta_softplus
+                ).view(B, K, -1, H, W)
+                y: torch.Tensor = cross_merge_fn(ys, in_channel_first=True, out_channel_first=True, scans=_scan_mode, force_torch=scan_force_torch)
+                y_ls.append(y)
+            y = torch.stack(y_ls, dim=0) # (T, B, D, H, W)
 
         if not channel_first:
             y = y.permute(0, 2, 3, 1).contiguous()

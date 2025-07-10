@@ -1,7 +1,7 @@
 model:
   name: SVMamba
-  depths: [2, 4, 6, 2]
-  dims: 384 
+  depths: [2, 2, 8, 2]
+  dims: 96 
   drop_path_rate: 0.2 
   patch_size: 4
   in_chans: 3

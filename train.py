@@ -61,7 +61,7 @@ def train(model, ema_model, train_loader, test_loader, criterion, optimizer, sch
             f.write(f'Epoch [{epoch_idx}/{epoch}], '
                     f'Avg Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%\n')
     
-        if epoch_idx % 20 == 0:
+        if epoch_idx % 20 == 1:
             model.eval()
             ema_model.apply_shadow()  # 应用 EMA 模型
             
@@ -91,8 +91,8 @@ def train(model, ema_model, train_loader, test_loader, criterion, optimizer, sch
                 with open(log_txt, 'a') as f:
                     f.write(f'Saved best model with accuracy: {test_acc:.2f}%\n')
             # 保存当前模型
-            torch.save(model.state_dict(), os.path.join(py_folder, 'checkpoints', f'{log}_last.pth'))
             ema_model.restore()  # 恢复 EMA 模型状态  
+            torch.save(model.state_dict(), os.path.join(py_folder, 'checkpoints', f'{log}_last.pth'))
    
 def parse_args():
     parser = argparse.ArgumentParser(description='Model Train')
@@ -121,6 +121,7 @@ if __name__ == "__main__":
         test_set, batch_size=cfg['exp']['batch_size'], shuffle=False, num_workers=4
     )
     
+    warmup_epochs = cfg['exp']['warmup_epochs']
     # 加载模型
     model = get_model(cfg['model']['name'], cfg=cfg['model'], class_num=class_num).to(device)
     if cfg['exp']['pretrained']:
@@ -130,6 +131,7 @@ if __name__ == "__main__":
         if os.path.exists(checkpoint_path):
             print(f"Loading pretrained model from {checkpoint_path}")
             model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+            warmup_epochs = 0  # 如果加载了预训练模型，则不需要 warmup
         else:
             raise FileNotFoundError(f"Pretrained model not found at {checkpoint_path}")
         
@@ -141,7 +143,7 @@ if __name__ == "__main__":
         
     criterion = nn.CrossEntropyLoss(label_smoothing=cfg['exp']['label_smoothing']).to(device)
     
-    main_epochs = cfg['exp']['epoch'] - cfg['exp']['warmup_epochs']
+    main_epochs = cfg['exp']['epoch'] - warmup_epochs
     optimizer = torch.optim.AdamW(model.parameters(),
         lr=cfg['exp']['lr'], weight_decay=cfg['exp']['weight_decay'], betas=(0.9, 0.999)
     )

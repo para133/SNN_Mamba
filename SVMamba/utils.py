@@ -85,12 +85,14 @@ class Mlp(nn.Module):
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
         self.fc1 = Linear(in_features, hidden_features, channel_first=channel_first)
+        self.fc1_bn = nn.BatchNorm2d(hidden_features) 
         self.lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
         self.fc2 = Linear(hidden_features, out_features, channel_first=channel_first)
         self.drop = nn.Dropout(drop)
 
     def forward(self, x):
         x = self.fc1(x)
+        x = self.fc1_bn(x)
         x = x.view(self.T, -1, x.shape[1], x.shape[2], x.shape[3]) 
         x = self.lif(x)
         x = x.flatten(0, 1)
@@ -115,14 +117,14 @@ class ConvLif(nn.Module):
         super().__init__()
         self.stride = stride
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding)
-        self.ln = LayerNorm(out_channels, channel_first=True) if norm else nn.Identity()
+        self.norm = nn.BatchNorm2d(out_channels) if norm else nn.Identity()
         self.lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
 
     def forward(self, x: torch.Tensor):
         T, B, C, H, W = x.shape
         x = x.flatten(0, 1)  
         x = self.conv(x)
-        x = self.ln(x)
+        x = self.norm(x)
         x = x.view(T, B, -1, H//self.stride, W//self.stride)
         x = self.lif(x)
         return x

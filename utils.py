@@ -152,8 +152,8 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_set, test_set, class_num = get_dataset("mini-imagenet", os.path.join(py_folder, "data", "Mini-ImageNet-Dataset"), img_size=32)
     print(f"Train set size: {len(train_set)}, Test set size: {len(test_set)}, Number of classes: {class_num}")
-    cfg = load_config(os.path.join(py_folder, "configs", "SVMamba_miniImageNet.yaml"))
-    model = get_model("SVMamba", cfg['model'], 100).to(device) 
+    cfg = load_config(os.path.join(py_folder, "configs", "QKFormer_miniImageNet.yaml"))
+    model = get_model(cfg['model']['name'], cfg['model'], 100).to(device) 
     test_tensor = torch.randn(2, 3, 224, 224).to(device)  # Example input tensor
     output = model(test_tensor)
     print(output.shape)  
