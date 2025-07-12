@@ -18,7 +18,7 @@ SNN_Mamba
 │   ├── cifar-10
 │   │   └── cifar-10-batches-py
 │   ├── cifar-100
-│   │   ├── cifar-100-python
+│   │   └── cifar-100-python
 │   └── Mini-ImageNet-Dataset
 │       ├── test
 │       ├── train
