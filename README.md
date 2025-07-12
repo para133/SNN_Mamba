@@ -1,4 +1,5 @@
 # 低能耗的脉冲视觉模型研究
+![SVMamba](figs/architecture.png)
 ## 环境配置
 ```
 conda create -n SVMamba python==3.9
