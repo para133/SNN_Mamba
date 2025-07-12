@@ -50,7 +50,7 @@ class2index json文件用于将数据集中类别编号转换为具体类别，M
 python predict.py --config path_to_your_yaml_config_file --class_index_json path_to_class2index_json_file --img_folder path_to_your_images_folder
 ```
 ## 预训练模型权重
-[模型权重](https://drive.google.com/file/d/1LZq5TSvojybLq5AYEj0uLhz8tlY0h7Fb/view?usp=sharing)
+[模型权重](https://drive.google.com/file/d/1Da5M6v3ouA6tYwt1mWt8V_9k8zxZOKem/view?usp=sharing)
 
 ## 参考
 如果你觉得这个仓库对你的研究有帮助，请考虑引用以下原始工作：
