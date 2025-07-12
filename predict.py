@@ -52,14 +52,12 @@ class ClassfierModel:
 def parse_args():
     parser = argparse.ArgumentParser(description='Classifier Model Prediction')
     parser.add_argument('--config', type=str, default='configs/VMamba_miniImageNet.yaml', help='Path to config file')
-    parser.add_argument('--class_index_json', type=str, help='Path to class index JSON file')
-    parser.add_argument('--img_folder', type=str, help='Folder containing images for prediction')
+    parser.add_argument('--class_index_json', type=str, required=True, help='Path to class index JSON file')
+    parser.add_argument('--img_folder', type=str, required=True, help='Folder containing images for prediction')
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_args()
-    args.class_index_json = os.path.join(py_folder, 'data', 'Mini-ImageNet-Dataset', 'MiniImageNet_class_index.json')
-    args.img_folder = os.path.join(py_folder, 'test_images')
     cfg = load_config(args.config)
     index2class_dict = json.load(open(args.class_index_json, 'r'))
     classfier_model = ClassfierModel(cfg)

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from SVMamba.utils import LayerNorm
-from SVMamba.SpikSS2D import SS2D
+from SVMamba.SS2D import SS2D
 
 class SpikeLinearAttention(nn.Module):
     def __init__(self, dim, heads=8):

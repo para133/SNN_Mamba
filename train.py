@@ -36,7 +36,7 @@ def train(model, ema_model, train_loader, test_loader, criterion, optimizer, sch
             optimizer.step()
             ema_model.update()  # 更新 EMA 模型
             
-            if cfg['exp']['model'] == 'QKFormer' or cfg['exp']['model'] == 'SVMamba' or cfg['exp']['model'] == 'SVSSM':
+            if cfg['exp']['model'] == 'QKFormer' or cfg['exp']['model'] == 'SVMamba':
                 functional.reset_net(model)  # 重置模型状态，恢复神经元
 
             total_loss += loss.item() * images.size(0)
@@ -50,7 +50,7 @@ def train(model, ema_model, train_loader, test_loader, criterion, optimizer, sch
             if tqdm_object:
                 list(tqdm_object)[-1].set_postfix(loss=avg_loss, acc=acc)
                 
-        scheduler.step()  # 更新学习率
+        scheduler.step()  
         avg_loss = total_loss / len(train_loader.dataset)
         accuracy = 100. * correct / total
 
@@ -75,7 +75,7 @@ def train(model, ema_model, train_loader, test_loader, criterion, optimizer, sch
                     _, predicted = outputs.max(1)
                     total += labels.size(0)
                     correct += predicted.eq(labels).sum().item()
-                    if cfg['exp']['model'] == 'QKFormer' or cfg['exp']['model'] == 'SVMamba' or cfg['exp']['model'] == 'SVSSM':
+                    if cfg['exp']['model'] == 'QKFormer' or cfg['exp']['model'] == 'SVMamba':
                         functional.reset_net(model)
                         
             test_acc = 100. * correct / total
@@ -96,7 +96,7 @@ def train(model, ema_model, train_loader, test_loader, criterion, optimizer, sch
    
 def parse_args():
     parser = argparse.ArgumentParser(description='Model Train')
-    parser.add_argument('--config', type=str, default='configs/SVSSM_miniImageNet.yaml', help='Path to config file')
+    parser.add_argument('--config', type=str, default='configs/SVMamba_miniImageNet.yaml', help='Path to config file')
     return parser.parse_args()
 
 if __name__ == "__main__":

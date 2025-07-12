@@ -20,7 +20,7 @@ exp:
   dataset: mini-imagenet
   root_path: ./data/Mini-ImageNet-Dataset
   img_size: 224
-  batch_size: 1
+  batch_size: 2
   lr: 0.001
   epoch: 200
   weight_decay: 0.00001
@@ -30,4 +30,4 @@ exp:
   use_clip_norm: True
   seed: 42
   pretrained: False
-  checkpoint: ./checkpoints/20250707-201539_QKFormer_mini_imagenet_QKFormer_mini-imagenet_best.pth
+  checkpoint: ./checkpoints/QKFormer_mini_imagenet.pth

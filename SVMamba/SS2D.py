@@ -215,7 +215,7 @@ class SS2Dv2:
         self.disable_z, forward_type = checkpostfix("_noz", forward_type)
         self.disable_z_act, forward_type = checkpostfix("_nozact", forward_type)
         # self.out_norm, forward_type = self.get_outnorm(forward_type, self.d_inner, channel_first)
-        self.out_norm = nn.BatchNorm2d(self.d_inner)
+        self.out_norm, forward_type = self.get_outnorm(forward_type, self.d_inner, channel_first)
         
         # forward_type debug =======================================
         # 参数绑定
@@ -239,8 +239,9 @@ class SS2Dv2:
         # in proj =======================================
         d_proj = self.d_inner if self.disable_z else (self.d_inner * 2)
         self.in_proj = Linear(self.d_model, d_proj, bias=bias, channel_first=channel_first)
-        self.lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
-        
+        self.act: nn.Module = act_layer()
+        self.dropout = nn.Dropout(dropout) if dropout > 0. else nn.Identity()
+
         # conv =======================================
         if self.with_dconv:
             self.conv2d = nn.Conv2d(
@@ -267,7 +268,7 @@ class SS2Dv2:
         # del self.x_proj
         
         # out proj =======================================
-        self.out_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.out_act = nn.GELU() if self.oact else nn.Identity()
         self.out_proj = Linear(self.d_inner, self.d_model, bias=bias, channel_first=channel_first)
 
         if initialize in ["v0"]:
@@ -314,8 +315,7 @@ class SS2Dv2:
         to_fp32 = lambda *args: (_a.to(torch.float32) for _a in args)
         force_fp32 = force_fp32 or ((not ssoflex) and self.training)
 
-        TB, D, H, W = x.shape
-        B = TB // self.T
+        B, D, H, W = x.shape
         N = self.d_state
         K, D, R = self.k_group, self.d_inner, self.dt_rank
         L = H * W
@@ -326,36 +326,33 @@ class SS2Dv2:
         if True:
             # 将图像序列化
             xs = cross_scan_fn(x, in_channel_first=True, out_channel_first=True, scans=_scan_mode, force_torch=scan_force_torch) # [B, 4, C, H*W]
-            x_dbl = self.x_proj(xs.view(TB, -1, L))
+            x_dbl = self.x_proj(xs.view(B, -1, L))
             # 将x_dbl分解为dts, Bs, Cs， 针对每个数据学习dts，B，C矩阵
             # dts: [B, K, dt_rank, L] Bs: [B, K, d_state, L], Cs: [B, K, d_state, L]， Ts：[H, B, d_state, W] / [W, B, d_state, H]* K
-            dts, Bs, Cs = torch.split(x_dbl.view(TB, K, -1, L), [R, N, N], dim=2)
-            dts = dts.contiguous().view(TB, -1, L) # [B, K, dt_rank, L] -> [B, K*dt_rank, L]
+            dts, Bs, Cs = torch.split(x_dbl.view(B, K, -1, L), [R, N, N], dim=2)
+            dts = dts.contiguous().view(B, -1, L) # [B, K, dt_rank, L] -> [B, K*dt_rank, L]
             dts = self.dt_projs(dts) # [B, K*dt_rank, L] -> [B, K*d_inner, L]
-            
-            xs = xs.view(self.T, B, -1, L) # (B, K * d_inner, L)
-            dts = dts.view(self.T, B, -1, L) # (B, K * d_inner, L)
+
+            xs = xs.view(B, -1, L) # (B, K * d_inner, L)
+            dts = dts.contiguous().view(B, -1, L) # (B, K * d_inner, L)
             As = -self.A_logs.to(torch.float).exp() # (k * d_inner, d_state)
             Ds = self.Ds.to(torch.float) # (K * d_inner)
-            Bs = Bs.contiguous().view(self.T, B, K, N, L) # (B, K, d_state, L)
-            Cs = Cs.contiguous().view(self.T, B, K, N, L) # (B, K, d_state, L)
+            Bs = Bs.contiguous().view(B, K, N, L) # (B, K, d_state, L)
+            Cs = Cs.contiguous().view(B, K, N, L) # (B, K, d_state, L)
             delta_bias = self.dt_projs_bias.view(-1).to(torch.float) # 算法中关于dts的偏置 
 
             if force_fp32:
                 xs, dts, Bs, Cs = to_fp32(xs, dts, Bs, Cs)
                 
-            y_ls = []
-            for t in range(self.T):
-                ys: torch.Tensor = selective_scan(
-                    xs[t], dts[t], As, Bs[t], Cs[t], Ds, delta_bias, delta_softplus
-                ).view(B, K, -1, H, W)
-                y: torch.Tensor = cross_merge_fn(ys, in_channel_first=True, out_channel_first=True, scans=_scan_mode, force_torch=scan_force_torch)
-                y_ls.append(y)
-            y = torch.stack(y_ls, dim=0) # (T, B, D, H, W)
+            ys: torch.Tensor = selective_scan(
+                xs, dts, As, Bs, Cs, Ds, delta_bias, delta_softplus
+            ).view(B, K, -1, H, W)
+            y: torch.Tensor = cross_merge_fn(ys, in_channel_first=True, out_channel_first=True, scans=_scan_mode, force_torch=scan_force_torch)
 
+        y = y.view(B, -1, H, W)
         if not channel_first:
             y = y.permute(0, 2, 3, 1).contiguous()
-        y = self.out_norm(y.view(TB, -1, H, W)) # (B * T, D, H, W)
+        y = self.out_norm(y)
 
         return y.to(x.dtype)
 
@@ -369,15 +366,12 @@ class SS2Dv2:
             x = x.permute(0, 3, 1, 2).contiguous()
         if self.with_dconv:
             x = self.conv2d(x) # (b, d, h, w)
-        x = x.view(self.T, -1, x.shape[1], x.shape[2], x.shape[3]) 
-        x = self.lif(x)
-        x = x.flatten(0, 1) # (B * T, D, H, W)
+        x = self.act(x)
         y = self.forward_core(x) # SS2D
-        y = y.view(self.T, -1, y.shape[1], y.shape[2], y.shape[3]) # (T, B, D, H, W)
-        y = self.out_lif(y) 
+        y = self.out_act(y) 
         if not self.disable_z:
             y = y * z
-        out = self.out_proj(y.flatten(0, 1)) # (B * T, D, H, W)
+        out = self.dropout(self.out_proj(y))
         return out
 
     @staticmethod

@@ -11,7 +11,7 @@ from SVMamba.SS2D import SS2D
 from SVMamba.utils import LayerNorm, PatchMerge, Permute, Linear
 from SVMamba.SpikMamba import SpikMambaBlock
 from SVMamba.utils import ConvBlock
-class SVSSM(nn.Module):
+class SVMamba(nn.Module):
     def __init__(
         self, 
         T = 4,

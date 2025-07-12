@@ -4,6 +4,7 @@ from tqdm import tqdm
 from torchvision import transforms
 from torch.utils.data import DataLoader
 import argparse
+from spikingjelly.clock_driven import functional
 
 from utils import get_model, load_config
 
@@ -42,7 +43,7 @@ def get_test_dataset(dataset_name, root_path, img_size=224):
     
 def parse_args():
     parser = argparse.ArgumentParser(description='Model Test')
-    parser.add_argument('--config', type=str, default='configs/VMamba_miniImageNet.yaml', help='Path to config file')
+    parser.add_argument('--config', type=str, default='configs/QKFormer_miniImageNet.yaml', help='Path to config file')
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -52,7 +53,7 @@ if __name__ == "__main__":
     cfg = load_config(args.config)
     
     val_set, class_num = get_test_dataset(cfg['exp']['dataset'], cfg['exp']['root_path'], cfg['exp']['img_size'])
-    val_loader = DataLoader(val_set, batch_size=64, shuffle=False, num_workers=4)
+    val_loader = DataLoader(val_set, batch_size=8, shuffle=False, num_workers=4)
     
     model = get_model(cfg['model']['name'], cfg=cfg['model'], class_num=class_num).to(device)
     assert cfg['exp']['checkpoint'] is not None, \
@@ -75,5 +76,7 @@ if __name__ == "__main__":
             _, predicted = outputs.max(1)
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
+            if cfg['exp']['model'] == 'QKFormer' or cfg['exp']['model'] == 'SVMamba':
+                functional.reset_net(model)
     test_acc = 100. * correct / total
     print(f'Validation Accuracy: {test_acc:.2f}%')

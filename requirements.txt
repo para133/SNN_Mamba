@@ -1,0 +1,12 @@
+Pillow==8.4.0
+PyYAML==6.0.1
+spikingjelly==0.0.0.0.14
+thop==0.1.1.post2209072238
+timm==0.6.12
+torch==2.2.0
+torchinfo==1.8.0
+torchvision==0.17.0
+tqdm==4.64.1
+triton==2.2.0
+ultralytics_thop==2.0.0
+zeus==0.12.0

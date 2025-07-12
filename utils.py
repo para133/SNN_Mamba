@@ -7,8 +7,7 @@ from thop import profile
 from torchinfo import summary
 from VMamba.model import VSSM
 from QKFormer.model import QKFormer
-from SVMamba.SVSSM import SVMamba
-from SVMamba.model import SVSSM
+from SVMamba.model import SVMamba
 
 def get_dataset(dataset_name, root_path, img_size=224):
     transform_train = transforms.Compose([
@@ -77,17 +76,6 @@ def get_model(model_name, cfg, class_num=100):
         )
     elif model_name == "SVMamba":
         return SVMamba(T=cfg['T'],
-            depths=cfg['depths'], dims=cfg['dims'], drop_path_rate=cfg['drop_path_rate'], 
-            patch_size=cfg['patch_size'], in_chans=cfg['in_chans'], num_classes=class_num, 
-            ssm_d_state=cfg['ssm_d_state'], ssm_ratio=cfg['ssm_ratio'], ssm_dt_rank=cfg['ssm_dt_rank'], ssm_act_layer=cfg['ssm_act_layer'],
-            ssm_conv=cfg['ssm_conv'], ssm_conv_bias=cfg['ssm_conv_bias'], ssm_drop_rate=cfg['ssm_drop_rate'], 
-            ssm_init=cfg['ssm_init'], forward_type=cfg['forward_type'], 
-            mlp_ratio=cfg['mlp_ratio'], mlp_act_layer=cfg['mlp_act_layer'], mlp_drop_rate=cfg['mlp_drop_rate'], gmlp=cfg['gmlp'],
-            patch_norm=cfg['patch_norm'], norm_layer=cfg['norm_layer'], 
-            use_checkpoint=cfg['use_checkpoint'],  imgsize=cfg['imgsize'], 
-        )
-    elif model_name == "SVSSM":
-        return SVSSM(T=cfg['T'],
             patch_size=cfg['patch_size'], in_chans=cfg['in_chans'], num_classes=class_num,
             depths=cfg['depths'], dims=cfg['dims'], drop_path_rate=cfg['drop_path_rate'],
             patch_norm=cfg['patch_norm'], norm_layer=cfg['norm_layer'],)
@@ -160,11 +148,10 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_set, test_set, class_num = get_dataset("mini-imagenet", os.path.join(py_folder, "data", "Mini-ImageNet-Dataset"), img_size=32)
     print(f"Train set size: {len(train_set)}, Test set size: {len(test_set)}, Number of classes: {class_num}")
-    cfg = load_config(os.path.join(py_folder, "configs", "SVSSM_miniImageNet.yaml"))
+    cfg = load_config(os.path.join(py_folder, "configs", "SVMamba_miniImageNet.yaml"))
     model = get_model(cfg['model']['name'], cfg['model'], 100).to(device) 
     test_tensor = torch.randn(2, 3, 224, 224).to(device)  # Example input tensor
     output = model(test_tensor)
     print(output.shape)  
     params = get_params(model)
     print(f"Model parameters: {params / 1e6:.2f}M")
-    # summary(model, input_size=(2, 3, 224, 224), device=device.type)
