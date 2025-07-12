@@ -5,11 +5,8 @@
 conda create -n SVMamba python==3.9
 conda activate SVMamba
 pip install -r requirements.txt
-
 # 实验使用 mamba_ssm 1.1.4 causal_conv1d 1.1.3.post1 在 cuda11.8 torch 2.2.0 下进行
-
 pip install https://github.com/state-spaces/mamba/releases/download/v1.1.4/mamba_ssm-1.1.4+cu118torch2.2cxx11abiFALSE-cp39-cp39-linux_x86_64.whl
-
 pip install https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.3.0.post1/causal_conv1d-1.3.0.post1+cu118torch2.2cxx11abiFALSE-cp38-cp38-linux_x86_64.whl
 ```
 
