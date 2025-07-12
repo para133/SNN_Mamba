@@ -42,7 +42,7 @@ python train.py --config path_to_your_yaml_config_file
 - checkpoint: 模型权重
 ## 模型测试
 ```
-python test.py -config path_to_your_yaml_config_file
+python test.py --config path_to_your_yaml_config_file
 ```
 ## 指定图片测试
 class2index json文件用于将数据集中类别编号转换为具体类别，Mini-ImageNet的对应文件可使用[json](https://drive.google.com/file/d/1LXD84iNkVhWxHhozJW_K2e9H9meKHNm5/view?usp=drive_link)
